@@ -6,6 +6,8 @@ from .serializers import DiscordUserSerializer
 from django.shortcuts import get_object_or_404
 from rest_framework.response import Response
 from rest_framework import status
+from datetime import datetime
+
 # Create your views here.
 
 class DiscordUserCreate(generics.CreateAPIView):
@@ -60,3 +62,21 @@ class DiscordUserAddLvlOnMessage(generics.UpdateAPIView):
         user.points += 10
         user.save()
         return Response({'status': 'ok', 'new_points': user.points})
+    
+
+
+class DiscordUserBan(generics.UpdateAPIView):
+    parser_classes = [JSONParser]
+    queryset = DiscordUser.objects.all()
+    serializer_class = DiscordUserSerializer
+    lookup_field = 'discord_id'
+
+    def update(self, request, *args, **kwargs):
+        discord_id = self.kwargs['discord_id']
+        user = get_object_or_404(DiscordUser, discord_id=discord_id)
+        if user.banned_lvl<=4:
+            user.banned_lvl+=1
+            if user.banned_lvl==5:
+                user.ban_start_time = datetime.now()
+            user.save()
+        return Response({"user_banned_lvl":f"{user.banned_lvl}"})

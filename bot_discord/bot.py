@@ -3,7 +3,7 @@ from discord.ext import commands
 from dotenv import load_dotenv
 import discord 
 
-from utils import createUser, userSendingMessage, getUserData
+from utils import createUser, userSendingMessage, getUserData, checkMessageContent
 load_dotenv()
 
 TOKEN = os.getenv('BOT_TOKEN')
@@ -14,6 +14,34 @@ intents.members = True
 bot = commands.Bot(command_prefix='!', intents=intents)
 
 
+
+async def create_vip_role(guild):
+    vip_role = discord.utils.get(guild.roles, name="VIP")
+    if not vip_role:
+        # Definir permisos para el nuevo rol
+        permissions = discord.Permissions(send_messages=True, manage_messages=True, read_messages=True)
+            
+        # Crear el rol con permisos definidos
+        new_role = await guild.create_role(
+            name="VIP",  # Nombre del rol
+            permissions=permissions,  # Asignamos los permisos
+            reason="Rol VIP para usuarios con más de 200 puntos",
+            color=discord.Color.gold(),  # Puedes elegir cualquier color
+        )
+
+async def create_member_role(guild):
+    vip_role = discord.utils.get(guild.roles, name="Member")
+    if not vip_role:
+        # Definir permisos para el nuevo rol
+        permissions = discord.Permissions(send_messages=True, manage_messages=True, read_messages=True)
+            
+        # Crear el rol con permisos definidos
+        new_role = await guild.create_role(
+            name="VIP",  # Nombre del rol
+            permissions=permissions,  # Asignamos los permisos
+            reason="Rol de Miembro básico",
+            color=discord.Color.blue(),  # Puedes elegir cualquier color
+        )
 
 @bot.command()
 async def helpMe(ctx):
@@ -65,6 +93,30 @@ async def lvl(ctx):
     
 
 
+
+
+
+
+
+
+
+
+async def create_muted_rol():
+    for guild in bot.guilds:
+        muted_role = discord.utils.get(guild.roles, name="Muted")
+        if not muted_role:
+            # Crear el rol Muted si no existe
+            muted_role = await guild.create_role(name="Muted", reason="Rol para silenciar usuarios")
+
+            # Denegar permisos para enviar mensajes en todos los canales
+            for channel in guild.channels:
+                try:
+                    await channel.set_permissions(muted_role, send_messages=False, add_reactions=False, speak=False)
+                except Exception as e:
+                    print(f"Error configurando permisos en {channel.name}: {e}")
+
+        print(f"Rol Muted listo en: {guild.name}")
+
 @bot.event
 async def on_message(message):
     if message.author.bot:
@@ -83,8 +135,16 @@ async def on_message(message):
                     await message.channel.send(
                         f"Felicidades {message.author.mention}, ahora eres VIP! 💎"
                     )
+    banned_lvl = await checkMessageContent(message.author, message)
 
-    await userSendingMessage(message.author)
+    if banned_lvl is not None:
+        await message.channel.send(
+            f"{message.author.mention} ha sido baneado (nivel {banned_lvl}) por contenido inapropiado. 🚫"
+        )
+        await muteUser(message.author)
+    else:
+        await userSendingMessage(message.author)
+
     await bot.process_commands(message)  # importante para que !ping, !lvl funcionen
 
 @bot.event
@@ -104,17 +164,24 @@ async def on_member_join(member):
 @bot.event
 async def on_ready():
     print(f"✅ Bot conectado como {bot.user}")
-    
+    await create_muted_rol()
     for guild in bot.guilds:  # Recorre cada servidor donde esté el bot
         print(f"🔍 Sincronizando usuarios del servidor: {guild.name}")
+        await create_vip_role(guild)
+        await create_member_role(guild)
         for member in guild.members:
             if member.bot:
                 continue  # Saltar bots, solo usuarios reales
-            
             try:
                await createUser(member)
             except Exception as e:
                 print(f"💥 Error conectando con Django para {member.name}: {e}")
 
+
+async def muteUser(member):
+    muted_role = discord.utils.get(member.guild.roles, name="Muted")
+    if muted_role and muted_role not in member.roles:
+        await member.add_roles(muted_role, reason="Baneado temporalmente por toxicidad")
+        print(f"{member.name} ha sido silenciado.")
 
 bot.run(TOKEN)
